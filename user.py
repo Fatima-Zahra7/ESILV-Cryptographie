@@ -80,7 +80,7 @@ class User:
 #****************************************
 
 def main():
-    filename = "users.csv"
+    filename = "DB/users.csv"
     user_manager = UserManager()
     user_manager.load_users(filename)
 
