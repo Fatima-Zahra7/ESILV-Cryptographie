@@ -1,6 +1,8 @@
 import random
 import string
 import csv
+import os
+from Cryptographie.PasswordHash import PasswordHasher
 
 class SaltGenerator :
     @staticmethod
@@ -27,20 +29,45 @@ class UserManager:
         self.last_id = 0
 
     def load_users(self, filename):
-        with open(filename, 'r') as file:
-            reader = csv.reader(file)
-            for row in reader:
-                user_id = int(row[0])
-                self.users[user_id] = User(user_id, row[1], row[2], row[3])
-                self.last_id = max(self.last_id, user_id)
+        if os.path.isfile(filename) and os.path.getsize(filename) > 0:
+            with open(filename, 'r') as file:
+                reader = csv.reader(file)
+                # header
+                header = next(reader)
+                # Vérifier si l'en-tête est valide
+                if header == ['ID', 'Username', 'Password', 'Salt']:
+                    for row in reader:
+                        if row:  # check if valide row
+                            user_id = int(row[0])
+                            self.users[user_id] = User(user_id, row[1], row[2], row[3])
+                            self.last_id = max(self.last_id, user_id)
+                        else:
+                            print("Ligne vide dans le fichier CSV.")
+                else:
+                    print("L'en-tête du fichier CSV n'est pas valide.")
+        else:
+            print("Le fichier CSV est vide ou n'existe pas.")
 
-    def register_user(self, username, password, salt, filename):
+    def register_user(self, username, password, filename):
+
         # Générer un nouvel ID
         self.last_id += 1
         user_id = self.last_id
 
+        if username in self.users:
+            print("This username is taken.")
+
+        # Vérifier si le mot de passe fourni par l'utilisateur est sécurisé
+        while not self.is_password_strong(password):
+            # Redemander un mot de passe sécurisé
+            password = input("Enter a more secure password: ")
+
+        # Hacher le mot de passe
+        salt = SaltGenerator().generate_salt()
+        hashed_password = PasswordHasher().hash_password(password, salt)
+
         # Création de l'instance User
-        new_user = User(user_id, username, password, salt)
+        new_user = User(user_id, username, hashed_password, salt)
         self.users[user_id] = new_user
 
         # Write to file
@@ -48,7 +75,7 @@ class UserManager:
             writer = csv.writer(csvfile)
             if csvfile.tell() == 0:
                writer.writerow(['ID','Username', 'Password', 'Salt'])
-            writer.writerow([user_id,username, password,salt])
+            writer.writerow([user_id,username, hashed_password,salt])
         print("User " + username + " was successfully registered.")
 
     def is_password_strong(self, password):
@@ -65,17 +92,26 @@ class UserManager:
         return has_digit and has_upper and has_lower and has_special
 
     def login_user(self, username, password):
+        password_hasher = PasswordHasher()
         # Connecte un utilisateur
-        if username in self.users and self.users[username].password == password:
-            print("Connexion réussie.")
-            return True
+        salt = self.get_user_salt(username)
+        if salt:
+            hashed_password = password_hasher.hash_password(password, salt)
+
+            if password_hasher.verify_password(hashed_password, salt, password):
+
+                print("Connexion réussie!")
+                return True
+            else:
+                print("Password incorrect!")
+                return False
         else:
-            print("username or password incorrect.")
+            print("User not found.")
             return False
 
     def get_user_salt(self, username):
-        if username in self.users:
-            return self.users[username].salt
-        else :
-            print("user doesn't exist")
-            return None
+        for user_id, user in self.users.items():
+            if user.username == username:
+                return user.salt
+        print("User doesn't exist")
+        return None
